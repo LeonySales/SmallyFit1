@@ -54,6 +54,29 @@ export interface IStorage {
   createSettings(settings: InsertSettings): Promise<Settings>;
   updateSettings(userId: number, data: Partial<Settings>): Promise<Settings>;
   
+  // Food items methods
+  getFoodItems(): Promise<FoodItem[]>;
+  getFoodItemById(id: number): Promise<FoodItem | undefined>;
+  searchFoodItems(query: string): Promise<FoodItem[]>;
+  createFoodItem(foodItem: InsertFoodItem): Promise<FoodItem>;
+  
+  // Meal methods
+  getUserMeals(userId: number): Promise<Meal[]>;
+  getUserMealsByDate(userId: number, date: Date): Promise<Meal[]>;
+  getMealById(id: number): Promise<Meal | undefined>;
+  createMeal(meal: InsertMeal): Promise<Meal>;
+  updateMealNutrition(id: number, nutrition: { 
+    totalCalories: number, 
+    totalProtein: number, 
+    totalCarbs: number, 
+    totalFat: number 
+  }): Promise<Meal>;
+  
+  // Meal items methods
+  getMealItems(mealId: number): Promise<MealItem[]>;
+  createMealItem(mealItem: InsertMealItem): Promise<MealItem>;
+  deleteMealItem(id: number): Promise<void>;
+  
   // Session store
   sessionStore: session.SessionStore;
 }
@@ -66,6 +89,9 @@ export class MemStorage implements IStorage {
   private exercises: Map<number, Exercise>;
   private notifications: Map<number, Notification>;
   private userSettings: Map<number, Settings>;
+  private foodItems: Map<number, FoodItem>;
+  private meals: Map<number, Meal>;
+  private mealItems: Map<number, MealItem>;
   
   sessionStore: session.SessionStore;
   currentUserId: number;
@@ -75,6 +101,9 @@ export class MemStorage implements IStorage {
   currentExerciseId: number;
   currentNotificationId: number;
   currentSettingsId: number;
+  currentFoodItemId: number;
+  currentMealId: number;
+  currentMealItemId: number;
 
   constructor() {
     this.users = new Map();
@@ -84,6 +113,9 @@ export class MemStorage implements IStorage {
     this.exercises = new Map();
     this.notifications = new Map();
     this.userSettings = new Map();
+    this.foodItems = new Map();
+    this.meals = new Map();
+    this.mealItems = new Map();
     
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000, // 24h
@@ -96,6 +128,9 @@ export class MemStorage implements IStorage {
     this.currentExerciseId = 1;
     this.currentNotificationId = 1;
     this.currentSettingsId = 1;
+    this.currentFoodItemId = 1;
+    this.currentMealId = 1;
+    this.currentMealItemId = 1;
     
     // Create admin user if it doesn't exist
     this.createUser({

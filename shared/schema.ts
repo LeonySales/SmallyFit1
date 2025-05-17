@@ -135,6 +135,78 @@ export const insertSettingsSchema = createInsertSchema(settings).pick({
   motivationTips: true,
 });
 
+// Food items table
+export const foodItems = pgTable("food_items", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  calories: integer("calories").notNull(), // per 100g/ml
+  protein: real("protein").notNull(), // g per 100g/ml
+  carbs: real("carbs").notNull(), // g per 100g/ml
+  fat: real("fat").notNull(), // g per 100g/ml
+  fiber: real("fiber").default(0).notNull(), // g per 100g/ml
+  sugar: real("sugar").default(0).notNull(), // g per 100g/ml
+  servingSize: integer("serving_size").default(100).notNull(), // g or ml
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Meals table (breakfast, lunch, dinner, snacks)
+export const meals = pgTable("meals", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(), // Breakfast, Lunch, Dinner, Snack, etc.
+  date: timestamp("date").defaultNow().notNull(),
+  totalCalories: integer("total_calories").default(0).notNull(),
+  totalProtein: real("total_protein").default(0).notNull(),
+  totalCarbs: real("total_carbs").default(0).notNull(),
+  totalFat: real("total_fat").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Meal items (links meals to food items with quantities)
+export const mealItems = pgTable("meal_items", {
+  id: serial("id").primaryKey(),
+  mealId: integer("meal_id").notNull().references(() => meals.id),
+  foodItemId: integer("food_item_id").notNull().references(() => foodItems.id),
+  quantity: integer("quantity").notNull(), // in grams or ml
+  calories: integer("calories").notNull(),
+  protein: real("protein").notNull(),
+  carbs: real("carbs").notNull(),
+  fat: real("fat").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Create schemas for validation and type inference
+export const insertFoodItemSchema = createInsertSchema(foodItems).pick({
+  name: true,
+  calories: true,
+  protein: true,
+  carbs: true,
+  fat: true,
+  fiber: true,
+  sugar: true,
+  servingSize: true,
+});
+
+export const insertMealSchema = createInsertSchema(meals).pick({
+  userId: true,
+  name: true,
+  date: true,
+  totalCalories: true,
+  totalProtein: true,
+  totalCarbs: true,
+  totalFat: true,
+});
+
+export const insertMealItemSchema = createInsertSchema(mealItems).pick({
+  mealId: true,
+  foodItemId: true,
+  quantity: true,
+  calories: true,
+  protein: true,
+  carbs: true,
+  fat: true,
+});
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -156,3 +228,12 @@ export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 
 export type Settings = typeof settings.$inferSelect;
 export type InsertSettings = z.infer<typeof insertSettingsSchema>;
+
+export type FoodItem = typeof foodItems.$inferSelect;
+export type InsertFoodItem = z.infer<typeof insertFoodItemSchema>;
+
+export type Meal = typeof meals.$inferSelect;
+export type InsertMeal = z.infer<typeof insertMealSchema>;
+
+export type MealItem = typeof mealItems.$inferSelect;
+export type InsertMealItem = z.infer<typeof insertMealItemSchema>;
