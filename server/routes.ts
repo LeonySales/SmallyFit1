@@ -430,6 +430,166 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Food items routes
+  app.get("/api/food-items", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const query = req.query.q as string;
+      let foodItems;
+      
+      if (query) {
+        foodItems = await storage.searchFoodItems(query);
+      } else {
+        foodItems = await storage.getFoodItems();
+      }
+      
+      res.json(foodItems);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching food items" });
+    }
+  });
+  
+  app.get("/api/food-items/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const id = parseInt(req.params.id, 10);
+      const foodItem = await storage.getFoodItemById(id);
+      
+      if (!foodItem) {
+        return res.status(404).json({ message: "Food item not found" });
+      }
+      
+      res.json(foodItem);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching food item" });
+    }
+  });
+  
+  app.post("/api/food-items", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const foodItem = await storage.createFoodItem(req.body);
+      res.status(201).json(foodItem);
+    } catch (error) {
+      res.status(500).json({ message: "Error creating food item" });
+    }
+  });
+  
+  // Meals routes
+  app.get("/api/meals", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const date = req.query.date ? new Date(req.query.date as string) : new Date();
+      const meals = await storage.getUserMealsByDate(req.user.id, date);
+      res.json(meals);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching meals" });
+    }
+  });
+  
+  app.get("/api/meals/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const id = parseInt(req.params.id, 10);
+      const meal = await storage.getMealById(id);
+      
+      if (!meal) {
+        return res.status(404).json({ message: "Meal not found" });
+      }
+      
+      if (meal.userId !== req.user.id) {
+        return res.status(403).json({ message: "Not authorized to access this meal" });
+      }
+      
+      res.json(meal);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching meal" });
+    }
+  });
+  
+  app.post("/api/meals", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const mealData = {
+        ...req.body,
+        userId: req.user.id,
+      };
+      
+      const meal = await storage.createMeal(mealData);
+      res.status(201).json(meal);
+    } catch (error) {
+      res.status(500).json({ message: "Error creating meal" });
+    }
+  });
+  
+  // Meal items routes
+  app.get("/api/meals/:mealId/items", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const mealId = parseInt(req.params.mealId, 10);
+      const meal = await storage.getMealById(mealId);
+      
+      if (!meal) {
+        return res.status(404).json({ message: "Meal not found" });
+      }
+      
+      if (meal.userId !== req.user.id) {
+        return res.status(403).json({ message: "Not authorized to access this meal" });
+      }
+      
+      const mealItems = await storage.getMealItems(mealId);
+      res.json(mealItems);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching meal items" });
+    }
+  });
+  
+  app.post("/api/meals/:mealId/items", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const mealId = parseInt(req.params.mealId, 10);
+      const meal = await storage.getMealById(mealId);
+      
+      if (!meal) {
+        return res.status(404).json({ message: "Meal not found" });
+      }
+      
+      if (meal.userId !== req.user.id) {
+        return res.status(403).json({ message: "Not authorized to access this meal" });
+      }
+      
+      const mealItemData = {
+        ...req.body,
+        mealId,
+      };
+      
+      const mealItem = await storage.createMealItem(mealItemData);
+      res.status(201).json(mealItem);
+    } catch (error) {
+      res.status(500).json({ message: "Error creating meal item" });
+    }
+  });
+  
+  app.delete("/api/meal-items/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const id = parseInt(req.params.id, 10);
+      await storage.deleteMealItem(id);
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: "Error deleting meal item" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
