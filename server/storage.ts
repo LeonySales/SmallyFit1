@@ -8,12 +8,16 @@ import {
   Settings, InsertSettings,
   FoodItem, InsertFoodItem,
   Meal, InsertMeal,
-  MealItem, InsertMealItem
+  MealItem, InsertMealItem,
+  users, measurements, waterIntake, workouts, exercises, notifications,
+  settings, foodItems, meals, mealItems
 } from "@shared/schema";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
+import { db, pool } from "./db";
+import { eq, desc, and, sql, like, gte, lte } from "drizzle-orm";
 
-const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   // User methods
@@ -81,480 +85,393 @@ export interface IStorage {
   deleteMealItem(id: number): Promise<void>;
   
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private measurements: Map<number, Measurement>;
-  private waterIntakes: Map<number, WaterIntake>;
-  private workouts: Map<number, Workout>;
-  private exercises: Map<number, Exercise>;
-  private notifications: Map<number, Notification>;
-  private userSettings: Map<number, Settings>;
-  private foodItems: Map<number, FoodItem>;
-  private meals: Map<number, Meal>;
-  private mealItems: Map<number, MealItem>;
+export class DatabaseStorage implements IStorage {
+  sessionStore: session.Store;
   
-  sessionStore: session.SessionStore;
-  currentUserId: number;
-  currentMeasurementId: number;
-  currentWaterIntakeId: number;
-  currentWorkoutId: number;
-  currentExerciseId: number;
-  currentNotificationId: number;
-  currentSettingsId: number;
-  currentFoodItemId: number;
-  currentMealId: number;
-  currentMealItemId: number;
-
   constructor() {
-    this.users = new Map();
-    this.measurements = new Map();
-    this.waterIntakes = new Map();
-    this.workouts = new Map();
-    this.exercises = new Map();
-    this.notifications = new Map();
-    this.userSettings = new Map();
-    this.foodItems = new Map();
-    this.meals = new Map();
-    this.mealItems = new Map();
-    
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000, // 24h
+    this.sessionStore = new PostgresSessionStore({ 
+      pool, 
+      createTableIfMissing: true 
     });
-    
-    this.currentUserId = 1;
-    this.currentMeasurementId = 1;
-    this.currentWaterIntakeId = 1;
-    this.currentWorkoutId = 1;
-    this.currentExerciseId = 1;
-    this.currentNotificationId = 1;
-    this.currentSettingsId = 1;
-    this.currentFoodItemId = 1;
-    this.currentMealId = 1;
-    this.currentMealItemId = 1;
     
     // Create admin user if it doesn't exist
-    this.createUser({
-      name: "Admin",
-      email: "admin@smallyfit.com",
-      password: "$2b$10$VIUOeA3ZtBQ8g2UdLo1RKu2d2auaI1x0KLVYMBbXnvx6jc/YjXKee", // senhaadmin123 (this is hashed)
-      isAdmin: true,
-    }).then(user => {
-      console.log("Admin user created with ID:", user.id);
+    this.getUserByEmail("admin@example.com").then(user => {
+      if (!user) {
+        this.createUser({
+          name: "Admin",
+          email: "admin@example.com",
+          password: "$2b$10$eCUm8giJAEzA9EMeGqpHsOX6iJQECRbQJA9BPOS9obdPW8m/exE8e", // password is "password"
+          isAdmin: true
+        }).then(user => {
+          console.log(`Admin user created with ID: ${user.id}`);
+        });
+      }
     });
   }
-
-  // User methods
+  
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email.toLowerCase() === email.toLowerCase(),
-    );
-  }
-
-  async createUser(userData: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const now = new Date();
-    const user: User = { 
-      ...userData, 
-      id,
-      createdAt: now,
-    };
-    this.users.set(id, user);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
-
+  
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+  
+  async createUser(userData: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(userData).returning();
+    
+    // Create default settings for the user
+    await this.createSettings({
+      userId: user.id,
+      darkMode: false,
+      units: "metric",
+      notificationSound: true,
+      waterReminders: true,
+      workoutReminders: true,
+      measurementReminders: true,
+      motivationTips: false
+    });
+    
+    return user;
+  }
+  
   async updateUser(id: number, data: Partial<User>): Promise<User> {
-    const user = await this.getUser(id);
+    const [user] = await db.update(users)
+      .set(data)
+      .where(eq(users.id, id))
+      .returning();
+    
     if (!user) {
       throw new Error("User not found");
     }
     
-    const updatedUser = { ...user, ...data };
-    this.users.set(id, updatedUser);
-    return updatedUser;
+    return user;
   }
-
+  
   async updateUserPassword(id: number, password: string): Promise<User> {
-    const user = await this.getUser(id);
-    if (!user) {
-      throw new Error("User not found");
-    }
-    
-    const updatedUser = { ...user, password };
-    this.users.set(id, updatedUser);
-    return updatedUser;
+    return this.updateUser(id, { password });
   }
-
+  
   async deleteUser(id: number): Promise<void> {
-    this.users.delete(id);
-    
-    // Clean up user data
-    for (const [measurementId, measurement] of this.measurements.entries()) {
-      if (measurement.userId === id) {
-        this.measurements.delete(measurementId);
-      }
-    }
-    
-    for (const [waterIntakeId, waterIntake] of this.waterIntakes.entries()) {
-      if (waterIntake.userId === id) {
-        this.waterIntakes.delete(waterIntakeId);
-      }
-    }
-    
-    for (const [workoutId, workout] of this.workouts.entries()) {
-      if (workout.userId === id) {
-        this.workouts.delete(workoutId);
-        
-        for (const [exerciseId, exercise] of this.exercises.entries()) {
-          if (exercise.workoutId === workoutId) {
-            this.exercises.delete(exerciseId);
-          }
-        }
-      }
-    }
-    
-    for (const [notificationId, notification] of this.notifications.entries()) {
-      if (notification.userId === id) {
-        this.notifications.delete(notificationId);
-      }
-    }
-    
-    for (const [settingsId, settings] of this.userSettings.entries()) {
-      if (settings.userId === id) {
-        this.userSettings.delete(settingsId);
-      }
-    }
+    await db.delete(users).where(eq(users.id, id));
   }
-
-  // Measurements methods
+  
   async getLatestMeasurement(userId: number): Promise<Measurement | undefined> {
-    const userMeasurements = Array.from(this.measurements.values())
-      .filter(m => m.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const [measurement] = await db.select()
+      .from(measurements)
+      .where(eq(measurements.userId, userId))
+      .orderBy(desc(measurements.createdAt))
+      .limit(1);
     
-    return userMeasurements[0];
-  }
-
-  async getMeasurementHistory(userId: number): Promise<Measurement[]> {
-    return Array.from(this.measurements.values())
-      .filter(m => m.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }
-
-  async createMeasurement(measurementData: InsertMeasurement): Promise<Measurement> {
-    const id = this.currentMeasurementId++;
-    const now = new Date();
-    const measurement: Measurement = {
-      ...measurementData,
-      id,
-      createdAt: now,
-    };
-    this.measurements.set(id, measurement);
     return measurement;
   }
-
-  // Water intake methods
+  
+  async getMeasurementHistory(userId: number): Promise<Measurement[]> {
+    return db.select()
+      .from(measurements)
+      .where(eq(measurements.userId, userId))
+      .orderBy(desc(measurements.createdAt));
+  }
+  
+  async createMeasurement(measurement: InsertMeasurement): Promise<Measurement> {
+    const [newMeasurement] = await db.insert(measurements)
+      .values(measurement)
+      .returning();
+    
+    return newMeasurement;
+  }
+  
   async getTodayWaterIntake(userId: number): Promise<number> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    return Array.from(this.waterIntakes.values())
-      .filter(w => w.userId === userId && new Date(w.createdAt) >= today)
-      .reduce((total, current) => total + current.amount, 0);
+    const result = await db.select({
+      total: sql`SUM(${waterIntake.amount})`
+    })
+      .from(waterIntake)
+      .where(
+        and(
+          eq(waterIntake.userId, userId),
+          gte(waterIntake.createdAt, today)
+        )
+      );
+    
+    return result[0]?.total || 0;
   }
-
+  
   async getWaterIntakeHistory(userId: number): Promise<{ day: string, amount: number }[]> {
-    const now = new Date();
-    const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const result: { day: string, amount: number }[] = [];
+    const result = await db.select({
+      day: sql`DATE(${waterIntake.createdAt})`,
+      amount: sql`SUM(${waterIntake.amount})`
+    })
+      .from(waterIntake)
+      .where(eq(waterIntake.userId, userId))
+      .groupBy(sql`DATE(${waterIntake.createdAt})`)
+      .orderBy(desc(sql`DATE(${waterIntake.createdAt})`));
     
-    // Get last 7 days water intake
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      date.setHours(0, 0, 0, 0);
-      
-      const nextDate = new Date(date);
-      nextDate.setDate(nextDate.getDate() + 1);
-      
-      const amount = Array.from(this.waterIntakes.values())
-        .filter(w => w.userId === userId && 
-                new Date(w.createdAt) >= date && 
-                new Date(w.createdAt) < nextDate)
-        .reduce((total, current) => total + current.amount, 0);
-      
-      const day = i === 0 ? 'Hoje' : weekDays[date.getDay()];
-      result.push({ day, amount });
-    }
-    
-    return result;
+    return result.map(item => ({
+      day: item.day.toISOString().split('T')[0],
+      amount: Number(item.amount)
+    }));
   }
-
+  
   async addWaterIntake(userId: number, amount: number): Promise<WaterIntake> {
-    const id = this.currentWaterIntakeId++;
-    const now = new Date();
-    const waterIntake: WaterIntake = {
-      id,
-      userId,
-      amount,
-      createdAt: now,
-    };
-    this.waterIntakes.set(id, waterIntake);
-    return waterIntake;
+    const [newIntake] = await db.insert(waterIntake)
+      .values({ userId, amount })
+      .returning();
+    
+    return newIntake;
   }
-
+  
   async removeWaterIntake(userId: number, amount: number): Promise<void> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Get today's water intakes
-    const todayIntakes = Array.from(this.waterIntakes.values())
-      .filter(w => w.userId === userId && new Date(w.createdAt) >= today)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Find the most recent water intake
+    const [latestIntake] = await db.select()
+      .from(waterIntake)
+      .where(
+        and(
+          eq(waterIntake.userId, userId),
+          gte(waterIntake.createdAt, today)
+        )
+      )
+      .orderBy(desc(waterIntake.createdAt))
+      .limit(1);
     
-    let remainingAmount = amount;
-    
-    // Remove water from most recent entries first
-    for (const intake of todayIntakes) {
-      if (remainingAmount <= 0) break;
-      
-      if (intake.amount <= remainingAmount) {
-        // Remove entire entry
-        this.waterIntakes.delete(intake.id);
-        remainingAmount -= intake.amount;
+    if (latestIntake) {
+      if (latestIntake.amount <= amount) {
+        await db.delete(waterIntake)
+          .where(eq(waterIntake.id, latestIntake.id));
       } else {
-        // Update entry with reduced amount
-        const updatedIntake = { ...intake, amount: intake.amount - remainingAmount };
-        this.waterIntakes.set(intake.id, updatedIntake);
-        remainingAmount = 0;
+        await db.update(waterIntake)
+          .set({ amount: latestIntake.amount - amount })
+          .where(eq(waterIntake.id, latestIntake.id));
       }
     }
   }
-
-  // Workout methods
+  
   async getTodayWorkout(userId: number): Promise<any> {
     const today = new Date();
-    const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][today.getDay()];
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const todayName = dayNames[today.getDay()];
     
-    const workout = Array.from(this.workouts.values())
-      .find(w => w.userId === userId && w.day === dayOfWeek);
+    const [workout] = await db.select()
+      .from(workouts)
+      .where(
+        and(
+          eq(workouts.userId, userId),
+          eq(workouts.day, todayName)
+        )
+      );
     
-    if (!workout) return null;
-    
-    const exercises = Array.from(this.exercises.values())
-      .filter(e => e.workoutId === workout.id);
-    
-    return {
-      id: workout.id,
-      title: workout.title,
-      type: workout.type,
-      date: dayOfWeek,
-      dayOfWeek: dayOfWeek.substring(0, 3),
-      exercises,
-      isToday: true,
-    };
-  }
-
-  async getWorkoutSchedule(userId: number): Promise<any[]> {
-    const workouts = Array.from(this.workouts.values())
-      .filter(w => w.userId === userId);
-    
-    const today = new Date();
-    const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][today.getDay()];
-    
-    return Promise.all(workouts.map(async (workout) => {
-      const exercises = Array.from(this.exercises.values())
-        .filter(e => e.workoutId === workout.id);
+    if (workout) {
+      const workoutExercises = await db.select()
+        .from(exercises)
+        .where(eq(exercises.workoutId, workout.id));
       
       return {
-        id: workout.id,
-        title: workout.title,
-        type: workout.type,
-        date: workout.day,
-        dayOfWeek: workout.day.substring(0, 3),
-        exercises,
-        isToday: workout.day === dayOfWeek,
+        ...workout,
+        exercises: workoutExercises
       };
+    }
+    
+    return null;
+  }
+  
+  async getWorkoutSchedule(userId: number): Promise<any[]> {
+    const userWorkouts = await db.select()
+      .from(workouts)
+      .where(eq(workouts.userId, userId));
+    
+    const workoutIds = userWorkouts.map(w => w.id);
+    
+    // Only fetch exercises if there are workouts
+    const workoutExercises = workoutIds.length > 0 
+      ? await db.select()
+          .from(exercises)
+          .where(sql`${exercises.workoutId} IN (${workoutIds.join(',')})`)
+      : [];
+    
+    // Group exercises by workout ID
+    const exercisesByWorkout = workoutExercises.reduce<Record<number, Exercise[]>>((acc, exercise) => {
+      if (!acc[exercise.workoutId]) {
+        acc[exercise.workoutId] = [];
+      }
+      acc[exercise.workoutId].push(exercise);
+      return acc;
+    }, {});
+    
+    // Add exercises to workouts
+    const workoutsWithExercises = userWorkouts.map(workout => ({
+      ...workout,
+      exercises: exercisesByWorkout[workout.id] || []
     }));
+    
+    // Sort by days of the week
+    const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    return workoutsWithExercises
+      .sort((a, b) => dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day));
   }
-
+  
   async getWorkoutById(id: number): Promise<Workout | undefined> {
-    return this.workouts.get(id);
-  }
-
-  async createWorkout(workoutData: InsertWorkout): Promise<Workout> {
-    const id = this.currentWorkoutId++;
-    const now = new Date();
-    const workout: Workout = {
-      ...workoutData,
-      id,
-      createdAt: now,
-    };
-    this.workouts.set(id, workout);
+    const [workout] = await db.select()
+      .from(workouts)
+      .where(eq(workouts.id, id));
+    
     return workout;
   }
-
-  async completeWorkout(workoutId: number): Promise<void> {
-    const exercises = Array.from(this.exercises.values())
-      .filter(e => e.workoutId === workoutId);
+  
+  async createWorkout(workout: InsertWorkout): Promise<Workout> {
+    const [newWorkout] = await db.insert(workouts)
+      .values(workout)
+      .returning();
     
-    for (const exercise of exercises) {
-      await this.updateExercise(exercise.id, { completed: true });
-    }
+    return newWorkout;
   }
-
-  // Exercise methods
-  async createExercise(exerciseData: InsertExercise): Promise<Exercise> {
-    const id = this.currentExerciseId++;
-    const now = new Date();
-    const exercise: Exercise = {
-      ...exerciseData,
-      id,
-      createdAt: now,
-    };
-    this.exercises.set(id, exercise);
-    return exercise;
+  
+  async completeWorkout(workoutId: number): Promise<void> {
+    await db.update(exercises)
+      .set({ completed: true })
+      .where(eq(exercises.workoutId, workoutId));
   }
-
+  
+  async createExercise(exercise: InsertExercise): Promise<Exercise> {
+    const [newExercise] = await db.insert(exercises)
+      .values(exercise)
+      .returning();
+    
+    return newExercise;
+  }
+  
   async updateExercise(id: number, data: Partial<Exercise>): Promise<Exercise> {
-    const exercise = this.exercises.get(id);
+    const [exercise] = await db.update(exercises)
+      .set(data)
+      .where(eq(exercises.id, id))
+      .returning();
+    
     if (!exercise) {
       throw new Error("Exercise not found");
     }
     
-    const updatedExercise = { ...exercise, ...data };
-    this.exercises.set(id, updatedExercise);
-    return updatedExercise;
+    return exercise;
   }
-
+  
   async verifyExerciseOwner(exerciseId: number, userId: number): Promise<boolean> {
-    const exercise = this.exercises.get(exerciseId);
-    if (!exercise) return false;
+    const result = await db.select()
+      .from(exercises)
+      .innerJoin(workouts, eq(exercises.workoutId, workouts.id))
+      .where(
+        and(
+          eq(exercises.id, exerciseId),
+          eq(workouts.userId, userId)
+        )
+      );
     
-    const workout = this.workouts.get(exercise.workoutId);
-    if (!workout) return false;
-    
-    return workout.userId === userId;
+    return result.length > 0;
   }
-
-  // Notification methods
+  
   async getUserNotifications(userId: number): Promise<Notification[]> {
-    return Array.from(this.notifications.values())
-      .filter(n => n.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return db.select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
   }
-
+  
   async markAllNotificationsAsRead(userId: number): Promise<void> {
-    const userNotifications = Array.from(this.notifications.values())
-      .filter(n => n.userId === userId);
+    await db.update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.userId, userId));
+  }
+  
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db.insert(notifications)
+      .values(notification)
+      .returning();
     
-    for (const notification of userNotifications) {
-      const updatedNotification = { ...notification, read: true };
-      this.notifications.set(notification.id, updatedNotification);
-    }
+    return newNotification;
   }
-
-  async createNotification(notificationData: InsertNotification): Promise<Notification> {
-    const id = this.currentNotificationId++;
-    const now = new Date();
-    const notification: Notification = {
-      ...notificationData,
-      id,
-      createdAt: now,
-    };
-    this.notifications.set(id, notification);
-    return notification;
-  }
-
-  // Settings methods
+  
   async getUserSettings(userId: number): Promise<Settings | undefined> {
-    return Array.from(this.userSettings.values())
-      .find(s => s.userId === userId);
-  }
-
-  async createSettings(settingsData: InsertSettings): Promise<Settings> {
-    const id = this.currentSettingsId++;
-    const now = new Date();
-    const settings: Settings = {
-      ...settingsData,
-      id,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.userSettings.set(id, settings);
-    return settings;
-  }
-
-  async updateSettings(userId: number, data: Partial<Settings>): Promise<Settings> {
-    const settings = await this.getUserSettings(userId);
+    const [setting] = await db.select()
+      .from(settings)
+      .where(eq(settings.userId, userId));
     
-    if (!settings) {
-      // Create settings if they don't exist
-      return this.createSettings({
+    return setting;
+  }
+  
+  async createSettings(setting: InsertSettings): Promise<Settings> {
+    const [newSettings] = await db.insert(settings)
+      .values(setting)
+      .returning();
+    
+    return newSettings;
+  }
+  
+  async updateSettings(userId: number, data: Partial<Settings>): Promise<Settings> {
+    let userSettings = await this.getUserSettings(userId);
+    
+    if (!userSettings) {
+      userSettings = await this.createSettings({
         userId,
-        darkMode: data.darkMode ?? false,
-        units: data.units ?? "metric",
-        notificationSound: data.notificationSound ?? true,
-        waterReminders: data.waterReminders ?? true,
-        workoutReminders: data.workoutReminders ?? true,
-        measurementReminders: data.measurementReminders ?? true,
-        motivationTips: data.motivationTips ?? false,
+        darkMode: false,
+        units: "metric",
+        notificationSound: true,
+        waterReminders: true,
+        workoutReminders: true,
+        measurementReminders: true,
+        motivationTips: false
       });
     }
     
-    const now = new Date();
-    const updatedSettings = { 
-      ...settings, 
-      ...data,
-      updatedAt: now,
-    };
+    const [updatedSettings] = await db.update(settings)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(settings.id, userSettings.id))
+      .returning();
     
-    this.userSettings.set(settings.id, updatedSettings);
     return updatedSettings;
   }
-
-  // Food items methods
+  
   async getFoodItems(): Promise<FoodItem[]> {
-    return Array.from(this.foodItems.values());
+    return db.select().from(foodItems);
   }
-
+  
   async getFoodItemById(id: number): Promise<FoodItem | undefined> {
-    return this.foodItems.get(id);
-  }
-
-  async searchFoodItems(query: string): Promise<FoodItem[]> {
-    const lowercaseQuery = query.toLowerCase();
-    return Array.from(this.foodItems.values()).filter(
-      (foodItem) => foodItem.name.toLowerCase().includes(lowercaseQuery)
-    );
-  }
-
-  async createFoodItem(foodItemData: InsertFoodItem): Promise<FoodItem> {
-    const id = this.currentFoodItemId++;
+    const [foodItem] = await db.select()
+      .from(foodItems)
+      .where(eq(foodItems.id, id));
     
-    const foodItem: FoodItem = {
-      id,
-      ...foodItemData,
-      createdAt: new Date(),
-    };
-    
-    this.foodItems.set(id, foodItem);
     return foodItem;
   }
-
-  // Meal methods
-  async getUserMeals(userId: number): Promise<Meal[]> {
-    return Array.from(this.meals.values()).filter(
-      (meal) => meal.userId === userId
-    );
+  
+  async searchFoodItems(query: string): Promise<FoodItem[]> {
+    return db.select()
+      .from(foodItems)
+      .where(
+        like(foodItems.name, `%${query}%`)
+      );
   }
-
+  
+  async createFoodItem(foodItem: InsertFoodItem): Promise<FoodItem> {
+    const [newFoodItem] = await db.insert(foodItems)
+      .values(foodItem)
+      .returning();
+    
+    return newFoodItem;
+  }
+  
+  async getUserMeals(userId: number): Promise<Meal[]> {
+    return db.select()
+      .from(meals)
+      .where(eq(meals.userId, userId))
+      .orderBy(desc(meals.date));
+  }
+  
   async getUserMealsByDate(userId: number, date: Date): Promise<Meal[]> {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
@@ -562,142 +479,110 @@ export class MemStorage implements IStorage {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
     
-    return Array.from(this.meals.values()).filter(
-      (meal) => 
-        meal.userId === userId && 
-        meal.date >= startOfDay && 
-        meal.date <= endOfDay
-    );
+    return db.select()
+      .from(meals)
+      .where(
+        and(
+          eq(meals.userId, userId),
+          gte(meals.date, startOfDay),
+          lte(meals.date, endOfDay)
+        )
+      );
   }
-
+  
   async getMealById(id: number): Promise<Meal | undefined> {
-    return this.meals.get(id);
-  }
-
-  async createMeal(mealData: InsertMeal): Promise<Meal> {
-    const id = this.currentMealId++;
+    const [meal] = await db.select()
+      .from(meals)
+      .where(eq(meals.id, id));
     
-    const meal: Meal = {
-      id,
-      ...mealData,
-      createdAt: new Date(),
-    };
-    
-    this.meals.set(id, meal);
     return meal;
   }
-
+  
+  async createMeal(meal: InsertMeal): Promise<Meal> {
+    const [newMeal] = await db.insert(meals)
+      .values(meal)
+      .returning();
+    
+    return newMeal;
+  }
+  
   async updateMealNutrition(id: number, nutrition: { 
     totalCalories: number, 
     totalProtein: number, 
     totalCarbs: number, 
     totalFat: number 
   }): Promise<Meal> {
-    const meal = await this.getMealById(id);
+    const [updatedMeal] = await db.update(meals)
+      .set(nutrition)
+      .where(eq(meals.id, id))
+      .returning();
     
-    if (!meal) {
+    if (!updatedMeal) {
       throw new Error("Meal not found");
     }
     
-    const updatedMeal: Meal = {
-      ...meal,
-      ...nutrition,
-    };
-    
-    this.meals.set(id, updatedMeal);
     return updatedMeal;
   }
-
-  // Meal items methods
+  
   async getMealItems(mealId: number): Promise<MealItem[]> {
-    return Array.from(this.mealItems.values()).filter(
-      (mealItem) => mealItem.mealId === mealId
-    );
+    return db.select()
+      .from(mealItems)
+      .where(eq(mealItems.mealId, mealId));
   }
-
-  async createMealItem(mealItemData: InsertMealItem): Promise<MealItem> {
-    const id = this.currentMealItemId++;
+  
+  async createMealItem(mealItem: InsertMealItem): Promise<MealItem> {
+    const [newMealItem] = await db.insert(mealItems)
+      .values(mealItem)
+      .returning();
     
-    // Get the food item to calculate nutrition based on quantity
-    const foodItem = await this.getFoodItemById(mealItemData.foodItemId);
-    if (!foodItem) {
-      throw new Error("Food item not found");
-    }
-    
-    // Calculate nutrition values based on quantity
-    const ratio = mealItemData.quantity / foodItem.servingSize;
-    const calories = Math.round(foodItem.calories * ratio);
-    const protein = parseFloat((foodItem.protein * ratio).toFixed(1));
-    const carbs = parseFloat((foodItem.carbs * ratio).toFixed(1));
-    const fat = parseFloat((foodItem.fat * ratio).toFixed(1));
-    
-    const mealItem: MealItem = {
-      id,
-      mealId: mealItemData.mealId,
-      foodItemId: mealItemData.foodItemId,
-      quantity: mealItemData.quantity,
-      calories,
-      protein,
-      carbs,
-      fat,
-      createdAt: new Date(),
-    };
-    
-    this.mealItems.set(id, mealItem);
-    
-    // Update the meal's total nutrition values
-    const meal = await this.getMealById(mealItemData.mealId);
-    if (meal) {
-      const mealItems = await this.getMealItems(meal.id);
-      
-      // Calculate total nutrition values
-      const totalCalories = mealItems.reduce((sum, item) => sum + item.calories, 0);
-      const totalProtein = parseFloat(mealItems.reduce((sum, item) => sum + item.protein, 0).toFixed(1));
-      const totalCarbs = parseFloat(mealItems.reduce((sum, item) => sum + item.carbs, 0).toFixed(1));
-      const totalFat = parseFloat(mealItems.reduce((sum, item) => sum + item.fat, 0).toFixed(1));
-      
-      // Update the meal with new nutrition totals
-      await this.updateMealNutrition(meal.id, {
-        totalCalories,
-        totalProtein,
-        totalCarbs,
-        totalFat
-      });
-    }
-    
-    return mealItem;
-  }
-
-  async deleteMealItem(id: number): Promise<void> {
-    const mealItem = this.mealItems.get(id);
-    
-    if (!mealItem) {
-      throw new Error("Meal item not found");
-    }
-    
-    // Remove the meal item
-    this.mealItems.delete(id);
-    
-    // Update the meal's total nutrition values
+    // Update meal nutrition totals
     const meal = await this.getMealById(mealItem.mealId);
+    
     if (meal) {
-      const mealItems = await this.getMealItems(meal.id);
+      const totalCalories = (meal.totalCalories || 0) + mealItem.calories;
+      const totalProtein = (meal.totalProtein || 0) + mealItem.protein;
+      const totalCarbs = (meal.totalCarbs || 0) + mealItem.carbs;
+      const totalFat = (meal.totalFat || 0) + mealItem.fat;
       
-      // Calculate total nutrition values
-      const totalCalories = mealItems.reduce((sum, item) => sum + item.calories, 0);
-      const totalProtein = parseFloat(mealItems.reduce((sum, item) => sum + item.protein, 0).toFixed(1));
-      const totalCarbs = parseFloat(mealItems.reduce((sum, item) => sum + item.carbs, 0).toFixed(1));
-      const totalFat = parseFloat(mealItems.reduce((sum, item) => sum + item.fat, 0).toFixed(1));
-      
-      // Update the meal with new nutrition totals
       await this.updateMealNutrition(meal.id, {
         totalCalories,
         totalProtein,
         totalCarbs,
         totalFat
       });
+    }
+    
+    return newMealItem;
+  }
+  
+  async deleteMealItem(id: number): Promise<void> {
+    // First get the meal item to update nutrition totals
+    const [mealItem] = await db.select()
+      .from(mealItems)
+      .where(eq(mealItems.id, id));
+    
+    if (mealItem) {
+      // Update meal nutrition totals
+      const meal = await this.getMealById(mealItem.mealId);
+      
+      if (meal) {
+        const totalCalories = Math.max(0, (meal.totalCalories || 0) - mealItem.calories);
+        const totalProtein = Math.max(0, (meal.totalProtein || 0) - mealItem.protein);
+        const totalCarbs = Math.max(0, (meal.totalCarbs || 0) - mealItem.carbs);
+        const totalFat = Math.max(0, (meal.totalFat || 0) - mealItem.fat);
+        
+        await this.updateMealNutrition(meal.id, {
+          totalCalories,
+          totalProtein,
+          totalCarbs,
+          totalFat
+        });
+      }
+      
+      // Now delete the meal item
+      await db.delete(mealItems).where(eq(mealItems.id, id));
     }
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
