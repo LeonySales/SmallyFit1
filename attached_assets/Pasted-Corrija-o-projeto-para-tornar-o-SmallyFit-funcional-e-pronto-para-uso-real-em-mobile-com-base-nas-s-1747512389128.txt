@@ -1,0 +1,72 @@
+Corrija o projeto para tornar o SmallyFit funcional e pronto para uso real em mobile, com base nas seguintes necessidades:
+
+🟢 1. LOGIN E CONTA DO USUÁRIO:
+- Corrigir o sistema de autenticação para que o usuário consiga criar conta e depois logar com os mesmos dados sem erro.
+- Criar um sistema simples de armazenamento local ou sessão (por exemplo, localStorage ou indexedDB) para manter os dados do usuário logado.
+- Garantir que a conta admin criada (admin@smallyfit.com) funcione e persista após logout.
+- Implementar uma lógica básica de recuperação de senha (pode ser simulado com mensagem de email enviado).
+
+🟢 2. SIDEBAR E NAVEGAÇÃO:
+- Sidebar já funciona, mas certifique-se de que ao clicar em cada item, a área correspondente apareça corretamente.
+- Ao acessar a área, o conteúdo da página deve estar carregado corretamente com botões e campos ativados.
+
+🟢 3. FUNCIONALIDADE DENTRO DE CADA ÁREA:
+Habilitar e tornar funcionais os campos e botões de todas as seções. Para cada item abaixo:
+
+a) **Dashboard**  
+- Mostrar mensagem "Olá, [Nome do usuário]" com nome salvo no cadastro.  
+- Adicionar dicas motivacionais rotativas (frases simples no topo ou cards).
+
+b) **Medidas**  
+- Ativar os campos para preencher medidas (abdômen, glúteos, braço etc).  
+- Botão de salvar medidas que grava localmente.  
+- Mostrar última data e valores salvos (para feedback visual).
+
+c) **IMC e Progresso**  
+- Calcular o IMC com base em altura e peso preenchidos.  
+- Exibir mensagem "Seu IMC é X. Classificação: [Magro/Normal/Sobrepeso/Obeso]".  
+- Gerar gráfico ou barra simples mostrando evolução (se possível com Chart.js).  
+
+d) **Água**  
+- Campo para meta diária de água (ex: 2000ml) e botão para marcar cada copo tomado.  
+- Exibir barra de progresso e texto tipo "Você tomou 1200ml de 2000ml".  
+- Salvar dados localmente.
+
+e) **Treinos**  
+- Mostrar lista de treinos separados por “Em casa” ou “Academia” (sem vídeos).  
+- Opção de marcar um treino como “feito” e salvar progresso diário.
+
+f) **Cardápio**  
+- Mostrar sugestões de refeições para cada objetivo: emagrecer, secar barriga, definir.  
+- Seleção do objetivo e exibição de refeições separadas por: café da manhã, almoço, lanche, jantar.  
+- Permitir que o usuário marque o que consumiu e calcule calorias.
+
+g) **Conquistas**  
+- Criar sistema visual simples com conquistas do tipo:  
+  "Completou 7 dias de treino", "Bebeu água por 5 dias seguidos", etc.  
+- Usar ícones ou cards visuais. Salvar localmente.
+
+h) **Notificações**  
+- Mostrar frases motivacionais personalizadas:  
+  Ex: “Você bateu sua meta hoje, continue firme!”  
+- Usar push local ou simular alertas com base em ações do usuário.
+
+i) **Configurações**  
+- Permitir editar nome, email, senha.  
+- Opção de ativar/desativar modo escuro (já está funcionando).  
+- Botão de logout que limpa os dados salvos e volta ao login.
+
+🟢 4. ARMAZENAMENTO LOCAL E PERSISTÊNCIA:
+- Todas as ações (salvar medidas, IMC, água, etc.) devem usar localStorage para manter os dados salvos mesmo se a pessoa sair do app e voltar.
+- Cada usuário deve ver apenas seus próprios dados.
+
+🟢 5. OTIMIZAÇÃO PARA MOBILE:
+- Certifique-se de que todas as seções estejam com layout responsivo, tocável e com botões grandes o suficiente.
+- Não usar popups modais que sejam difíceis de fechar em mobile.
+
+🟢 6. TEXTO DE AJUSTES FINAIS:
+- Adicionar instruções no topo de cada página com frases simples, tipo:  
+  "Preencha seus dados abaixo para calcular seu IMC"  
+  "Registre sua água para ver o progresso diário"
+
+Este prompt é final. Corrija todo o código do projeto atual baseado nesses requisitos e entregue com tudo funcional.
