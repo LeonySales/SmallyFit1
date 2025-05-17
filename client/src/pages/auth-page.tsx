@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -65,11 +65,12 @@ export default function AuthPage() {
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false);
   const [recoverySubmitted, setRecoverySubmitted] = useState(false);
 
-  // Redirect if already logged in
-  if (user) {
-    setLocation("/");
-    return null;
-  }
+  // Use useEffect for navigation to avoid React hook errors
+  useEffect(() => {
+    if (user) {
+      setLocation("/");
+    }
+  }, [user, setLocation]);
 
   // Login form
   const loginForm = useForm<LoginFormValues>({
