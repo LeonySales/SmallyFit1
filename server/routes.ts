@@ -516,14 +516,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
     try {
+      // Garantir que a data seja um objeto Date válido
+      let mealDate = new Date();
+      if (req.body.date) {
+        try {
+          mealDate = new Date(req.body.date);
+        } catch (e) {
+          console.error("Invalid date format:", e);
+        }
+      }
+      
       const mealData = {
         ...req.body,
         userId: req.user.id,
+        date: mealDate,
+        // Garantir valores numéricos para os campos de nutrição
+        totalCalories: req.body.totalCalories || 0,
+        totalProtein: req.body.totalProtein || 0,
+        totalCarbs: req.body.totalCarbs || 0,
+        totalFat: req.body.totalFat || 0
       };
       
+      console.log("Creating meal with data:", JSON.stringify(mealData));
       const meal = await storage.createMeal(mealData);
       res.status(201).json(meal);
     } catch (error) {
+      console.error("Error creating meal:", error);
       res.status(500).json({ message: "Error creating meal" });
     }
   });

@@ -3,6 +3,7 @@ import {
   Ruler, 
   Dumbbell, 
   Droplets, 
+  Utensils,
   Settings 
 } from "lucide-react";
 
@@ -17,6 +18,7 @@ export function BottomNav({ activeSection, setActiveSection }: BottomNavProps) {
     { id: 'medidas', label: 'Medidas', icon: <Ruler className="h-5 w-5" /> },
     { id: 'treinos', label: 'Treinos', icon: <Dumbbell className="h-5 w-5" /> },
     { id: 'agua', label: 'Água', icon: <Droplets className="h-5 w-5" /> },
+    { id: 'cardapio', label: 'Cardápio', icon: <Utensils className="h-5 w-5" /> },
     { id: 'configuracoes', label: 'Mais', icon: <Settings className="h-5 w-5" /> },
   ];
 
