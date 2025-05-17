@@ -1,0 +1,485 @@
+import { 
+  User, InsertUser, 
+  Measurement, InsertMeasurement,
+  WaterIntake, InsertWaterIntake,
+  Workout, InsertWorkout,
+  Exercise, InsertExercise,
+  Notification, InsertNotification,
+  Settings, InsertSettings
+} from "@shared/schema";
+import session from "express-session";
+import createMemoryStore from "memorystore";
+
+const MemoryStore = createMemoryStore(session);
+
+export interface IStorage {
+  // User methods
+  getUser(id: number): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, data: Partial<User>): Promise<User>;
+  updateUserPassword(id: number, password: string): Promise<User>;
+  deleteUser(id: number): Promise<void>;
+  
+  // Measurements methods
+  getLatestMeasurement(userId: number): Promise<Measurement | undefined>;
+  getMeasurementHistory(userId: number): Promise<Measurement[]>;
+  createMeasurement(measurement: InsertMeasurement): Promise<Measurement>;
+  
+  // Water intake methods
+  getTodayWaterIntake(userId: number): Promise<number>;
+  getWaterIntakeHistory(userId: number): Promise<{ day: string, amount: number }[]>;
+  addWaterIntake(userId: number, amount: number): Promise<WaterIntake>;
+  removeWaterIntake(userId: number, amount: number): Promise<void>;
+  
+  // Workout methods
+  getTodayWorkout(userId: number): Promise<any>;
+  getWorkoutSchedule(userId: number): Promise<any[]>;
+  getWorkoutById(id: number): Promise<Workout | undefined>;
+  createWorkout(workout: InsertWorkout): Promise<Workout>;
+  completeWorkout(workoutId: number): Promise<void>;
+  
+  // Exercise methods
+  createExercise(exercise: InsertExercise): Promise<Exercise>;
+  updateExercise(id: number, data: Partial<Exercise>): Promise<Exercise>;
+  verifyExerciseOwner(exerciseId: number, userId: number): Promise<boolean>;
+  
+  // Notification methods
+  getUserNotifications(userId: number): Promise<Notification[]>;
+  markAllNotificationsAsRead(userId: number): Promise<void>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  
+  // Settings methods
+  getUserSettings(userId: number): Promise<Settings | undefined>;
+  createSettings(settings: InsertSettings): Promise<Settings>;
+  updateSettings(userId: number, data: Partial<Settings>): Promise<Settings>;
+  
+  // Session store
+  sessionStore: session.SessionStore;
+}
+
+export class MemStorage implements IStorage {
+  private users: Map<number, User>;
+  private measurements: Map<number, Measurement>;
+  private waterIntakes: Map<number, WaterIntake>;
+  private workouts: Map<number, Workout>;
+  private exercises: Map<number, Exercise>;
+  private notifications: Map<number, Notification>;
+  private userSettings: Map<number, Settings>;
+  
+  sessionStore: session.SessionStore;
+  currentUserId: number;
+  currentMeasurementId: number;
+  currentWaterIntakeId: number;
+  currentWorkoutId: number;
+  currentExerciseId: number;
+  currentNotificationId: number;
+  currentSettingsId: number;
+
+  constructor() {
+    this.users = new Map();
+    this.measurements = new Map();
+    this.waterIntakes = new Map();
+    this.workouts = new Map();
+    this.exercises = new Map();
+    this.notifications = new Map();
+    this.userSettings = new Map();
+    
+    this.sessionStore = new MemoryStore({
+      checkPeriod: 86400000, // 24h
+    });
+    
+    this.currentUserId = 1;
+    this.currentMeasurementId = 1;
+    this.currentWaterIntakeId = 1;
+    this.currentWorkoutId = 1;
+    this.currentExerciseId = 1;
+    this.currentNotificationId = 1;
+    this.currentSettingsId = 1;
+    
+    // Create admin user if it doesn't exist
+    this.createUser({
+      name: "Admin",
+      email: "admin@smallyfit.com",
+      password: "$2b$10$VIUOeA3ZtBQ8g2UdLo1RKu2d2auaI1x0KLVYMBbXnvx6jc/YjXKee", // senhaadmin123 (this is hashed)
+      isAdmin: true,
+    }).then(user => {
+      console.log("Admin user created with ID:", user.id);
+    });
+  }
+
+  // User methods
+  async getUser(id: number): Promise<User | undefined> {
+    return this.users.get(id);
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(
+      (user) => user.email.toLowerCase() === email.toLowerCase(),
+    );
+  }
+
+  async createUser(userData: InsertUser): Promise<User> {
+    const id = this.currentUserId++;
+    const now = new Date();
+    const user: User = { 
+      ...userData, 
+      id,
+      createdAt: now,
+    };
+    this.users.set(id, user);
+    return user;
+  }
+
+  async updateUser(id: number, data: Partial<User>): Promise<User> {
+    const user = await this.getUser(id);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    const updatedUser = { ...user, ...data };
+    this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
+  async updateUserPassword(id: number, password: string): Promise<User> {
+    const user = await this.getUser(id);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    const updatedUser = { ...user, password };
+    this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    this.users.delete(id);
+    
+    // Clean up user data
+    for (const [measurementId, measurement] of this.measurements.entries()) {
+      if (measurement.userId === id) {
+        this.measurements.delete(measurementId);
+      }
+    }
+    
+    for (const [waterIntakeId, waterIntake] of this.waterIntakes.entries()) {
+      if (waterIntake.userId === id) {
+        this.waterIntakes.delete(waterIntakeId);
+      }
+    }
+    
+    for (const [workoutId, workout] of this.workouts.entries()) {
+      if (workout.userId === id) {
+        this.workouts.delete(workoutId);
+        
+        for (const [exerciseId, exercise] of this.exercises.entries()) {
+          if (exercise.workoutId === workoutId) {
+            this.exercises.delete(exerciseId);
+          }
+        }
+      }
+    }
+    
+    for (const [notificationId, notification] of this.notifications.entries()) {
+      if (notification.userId === id) {
+        this.notifications.delete(notificationId);
+      }
+    }
+    
+    for (const [settingsId, settings] of this.userSettings.entries()) {
+      if (settings.userId === id) {
+        this.userSettings.delete(settingsId);
+      }
+    }
+  }
+
+  // Measurements methods
+  async getLatestMeasurement(userId: number): Promise<Measurement | undefined> {
+    const userMeasurements = Array.from(this.measurements.values())
+      .filter(m => m.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    return userMeasurements[0];
+  }
+
+  async getMeasurementHistory(userId: number): Promise<Measurement[]> {
+    return Array.from(this.measurements.values())
+      .filter(m => m.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async createMeasurement(measurementData: InsertMeasurement): Promise<Measurement> {
+    const id = this.currentMeasurementId++;
+    const now = new Date();
+    const measurement: Measurement = {
+      ...measurementData,
+      id,
+      createdAt: now,
+    };
+    this.measurements.set(id, measurement);
+    return measurement;
+  }
+
+  // Water intake methods
+  async getTodayWaterIntake(userId: number): Promise<number> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return Array.from(this.waterIntakes.values())
+      .filter(w => w.userId === userId && new Date(w.createdAt) >= today)
+      .reduce((total, current) => total + current.amount, 0);
+  }
+
+  async getWaterIntakeHistory(userId: number): Promise<{ day: string, amount: number }[]> {
+    const now = new Date();
+    const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const result: { day: string, amount: number }[] = [];
+    
+    // Get last 7 days water intake
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      date.setHours(0, 0, 0, 0);
+      
+      const nextDate = new Date(date);
+      nextDate.setDate(nextDate.getDate() + 1);
+      
+      const amount = Array.from(this.waterIntakes.values())
+        .filter(w => w.userId === userId && 
+                new Date(w.createdAt) >= date && 
+                new Date(w.createdAt) < nextDate)
+        .reduce((total, current) => total + current.amount, 0);
+      
+      const day = i === 0 ? 'Hoje' : weekDays[date.getDay()];
+      result.push({ day, amount });
+    }
+    
+    return result;
+  }
+
+  async addWaterIntake(userId: number, amount: number): Promise<WaterIntake> {
+    const id = this.currentWaterIntakeId++;
+    const now = new Date();
+    const waterIntake: WaterIntake = {
+      id,
+      userId,
+      amount,
+      createdAt: now,
+    };
+    this.waterIntakes.set(id, waterIntake);
+    return waterIntake;
+  }
+
+  async removeWaterIntake(userId: number, amount: number): Promise<void> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Get today's water intakes
+    const todayIntakes = Array.from(this.waterIntakes.values())
+      .filter(w => w.userId === userId && new Date(w.createdAt) >= today)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    let remainingAmount = amount;
+    
+    // Remove water from most recent entries first
+    for (const intake of todayIntakes) {
+      if (remainingAmount <= 0) break;
+      
+      if (intake.amount <= remainingAmount) {
+        // Remove entire entry
+        this.waterIntakes.delete(intake.id);
+        remainingAmount -= intake.amount;
+      } else {
+        // Update entry with reduced amount
+        const updatedIntake = { ...intake, amount: intake.amount - remainingAmount };
+        this.waterIntakes.set(intake.id, updatedIntake);
+        remainingAmount = 0;
+      }
+    }
+  }
+
+  // Workout methods
+  async getTodayWorkout(userId: number): Promise<any> {
+    const today = new Date();
+    const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][today.getDay()];
+    
+    const workout = Array.from(this.workouts.values())
+      .find(w => w.userId === userId && w.day === dayOfWeek);
+    
+    if (!workout) return null;
+    
+    const exercises = Array.from(this.exercises.values())
+      .filter(e => e.workoutId === workout.id);
+    
+    return {
+      id: workout.id,
+      title: workout.title,
+      type: workout.type,
+      date: dayOfWeek,
+      dayOfWeek: dayOfWeek.substring(0, 3),
+      exercises,
+      isToday: true,
+    };
+  }
+
+  async getWorkoutSchedule(userId: number): Promise<any[]> {
+    const workouts = Array.from(this.workouts.values())
+      .filter(w => w.userId === userId);
+    
+    const today = new Date();
+    const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][today.getDay()];
+    
+    return Promise.all(workouts.map(async (workout) => {
+      const exercises = Array.from(this.exercises.values())
+        .filter(e => e.workoutId === workout.id);
+      
+      return {
+        id: workout.id,
+        title: workout.title,
+        type: workout.type,
+        date: workout.day,
+        dayOfWeek: workout.day.substring(0, 3),
+        exercises,
+        isToday: workout.day === dayOfWeek,
+      };
+    }));
+  }
+
+  async getWorkoutById(id: number): Promise<Workout | undefined> {
+    return this.workouts.get(id);
+  }
+
+  async createWorkout(workoutData: InsertWorkout): Promise<Workout> {
+    const id = this.currentWorkoutId++;
+    const now = new Date();
+    const workout: Workout = {
+      ...workoutData,
+      id,
+      createdAt: now,
+    };
+    this.workouts.set(id, workout);
+    return workout;
+  }
+
+  async completeWorkout(workoutId: number): Promise<void> {
+    const exercises = Array.from(this.exercises.values())
+      .filter(e => e.workoutId === workoutId);
+    
+    for (const exercise of exercises) {
+      await this.updateExercise(exercise.id, { completed: true });
+    }
+  }
+
+  // Exercise methods
+  async createExercise(exerciseData: InsertExercise): Promise<Exercise> {
+    const id = this.currentExerciseId++;
+    const now = new Date();
+    const exercise: Exercise = {
+      ...exerciseData,
+      id,
+      createdAt: now,
+    };
+    this.exercises.set(id, exercise);
+    return exercise;
+  }
+
+  async updateExercise(id: number, data: Partial<Exercise>): Promise<Exercise> {
+    const exercise = this.exercises.get(id);
+    if (!exercise) {
+      throw new Error("Exercise not found");
+    }
+    
+    const updatedExercise = { ...exercise, ...data };
+    this.exercises.set(id, updatedExercise);
+    return updatedExercise;
+  }
+
+  async verifyExerciseOwner(exerciseId: number, userId: number): Promise<boolean> {
+    const exercise = this.exercises.get(exerciseId);
+    if (!exercise) return false;
+    
+    const workout = this.workouts.get(exercise.workoutId);
+    if (!workout) return false;
+    
+    return workout.userId === userId;
+  }
+
+  // Notification methods
+  async getUserNotifications(userId: number): Promise<Notification[]> {
+    return Array.from(this.notifications.values())
+      .filter(n => n.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async markAllNotificationsAsRead(userId: number): Promise<void> {
+    const userNotifications = Array.from(this.notifications.values())
+      .filter(n => n.userId === userId);
+    
+    for (const notification of userNotifications) {
+      const updatedNotification = { ...notification, read: true };
+      this.notifications.set(notification.id, updatedNotification);
+    }
+  }
+
+  async createNotification(notificationData: InsertNotification): Promise<Notification> {
+    const id = this.currentNotificationId++;
+    const now = new Date();
+    const notification: Notification = {
+      ...notificationData,
+      id,
+      createdAt: now,
+    };
+    this.notifications.set(id, notification);
+    return notification;
+  }
+
+  // Settings methods
+  async getUserSettings(userId: number): Promise<Settings | undefined> {
+    return Array.from(this.userSettings.values())
+      .find(s => s.userId === userId);
+  }
+
+  async createSettings(settingsData: InsertSettings): Promise<Settings> {
+    const id = this.currentSettingsId++;
+    const now = new Date();
+    const settings: Settings = {
+      ...settingsData,
+      id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.userSettings.set(id, settings);
+    return settings;
+  }
+
+  async updateSettings(userId: number, data: Partial<Settings>): Promise<Settings> {
+    const settings = await this.getUserSettings(userId);
+    
+    if (!settings) {
+      // Create settings if they don't exist
+      return this.createSettings({
+        userId,
+        darkMode: data.darkMode ?? false,
+        units: data.units ?? "metric",
+        notificationSound: data.notificationSound ?? true,
+        waterReminders: data.waterReminders ?? true,
+        workoutReminders: data.workoutReminders ?? true,
+        measurementReminders: data.measurementReminders ?? true,
+        motivationTips: data.motivationTips ?? false,
+      });
+    }
+    
+    const now = new Date();
+    const updatedSettings = { 
+      ...settings, 
+      ...data,
+      updatedAt: now,
+    };
+    
+    this.userSettings.set(settings.id, updatedSettings);
+    return updatedSettings;
+  }
+}
+
+export const storage = new MemStorage();
