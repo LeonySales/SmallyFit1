@@ -5,7 +5,10 @@ import {
   Workout, InsertWorkout,
   Exercise, InsertExercise,
   Notification, InsertNotification,
-  Settings, InsertSettings
+  Settings, InsertSettings,
+  FoodItem, InsertFoodItem,
+  Meal, InsertMeal,
+  MealItem, InsertMealItem
 } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -514,6 +517,186 @@ export class MemStorage implements IStorage {
     
     this.userSettings.set(settings.id, updatedSettings);
     return updatedSettings;
+  }
+
+  // Food items methods
+  async getFoodItems(): Promise<FoodItem[]> {
+    return Array.from(this.foodItems.values());
+  }
+
+  async getFoodItemById(id: number): Promise<FoodItem | undefined> {
+    return this.foodItems.get(id);
+  }
+
+  async searchFoodItems(query: string): Promise<FoodItem[]> {
+    const lowercaseQuery = query.toLowerCase();
+    return Array.from(this.foodItems.values()).filter(
+      (foodItem) => foodItem.name.toLowerCase().includes(lowercaseQuery)
+    );
+  }
+
+  async createFoodItem(foodItemData: InsertFoodItem): Promise<FoodItem> {
+    const id = this.currentFoodItemId++;
+    
+    const foodItem: FoodItem = {
+      id,
+      ...foodItemData,
+      createdAt: new Date(),
+    };
+    
+    this.foodItems.set(id, foodItem);
+    return foodItem;
+  }
+
+  // Meal methods
+  async getUserMeals(userId: number): Promise<Meal[]> {
+    return Array.from(this.meals.values()).filter(
+      (meal) => meal.userId === userId
+    );
+  }
+
+  async getUserMealsByDate(userId: number, date: Date): Promise<Meal[]> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    return Array.from(this.meals.values()).filter(
+      (meal) => 
+        meal.userId === userId && 
+        meal.date >= startOfDay && 
+        meal.date <= endOfDay
+    );
+  }
+
+  async getMealById(id: number): Promise<Meal | undefined> {
+    return this.meals.get(id);
+  }
+
+  async createMeal(mealData: InsertMeal): Promise<Meal> {
+    const id = this.currentMealId++;
+    
+    const meal: Meal = {
+      id,
+      ...mealData,
+      createdAt: new Date(),
+    };
+    
+    this.meals.set(id, meal);
+    return meal;
+  }
+
+  async updateMealNutrition(id: number, nutrition: { 
+    totalCalories: number, 
+    totalProtein: number, 
+    totalCarbs: number, 
+    totalFat: number 
+  }): Promise<Meal> {
+    const meal = await this.getMealById(id);
+    
+    if (!meal) {
+      throw new Error("Meal not found");
+    }
+    
+    const updatedMeal: Meal = {
+      ...meal,
+      ...nutrition,
+    };
+    
+    this.meals.set(id, updatedMeal);
+    return updatedMeal;
+  }
+
+  // Meal items methods
+  async getMealItems(mealId: number): Promise<MealItem[]> {
+    return Array.from(this.mealItems.values()).filter(
+      (mealItem) => mealItem.mealId === mealId
+    );
+  }
+
+  async createMealItem(mealItemData: InsertMealItem): Promise<MealItem> {
+    const id = this.currentMealItemId++;
+    
+    // Get the food item to calculate nutrition based on quantity
+    const foodItem = await this.getFoodItemById(mealItemData.foodItemId);
+    if (!foodItem) {
+      throw new Error("Food item not found");
+    }
+    
+    // Calculate nutrition values based on quantity
+    const ratio = mealItemData.quantity / foodItem.servingSize;
+    const calories = Math.round(foodItem.calories * ratio);
+    const protein = parseFloat((foodItem.protein * ratio).toFixed(1));
+    const carbs = parseFloat((foodItem.carbs * ratio).toFixed(1));
+    const fat = parseFloat((foodItem.fat * ratio).toFixed(1));
+    
+    const mealItem: MealItem = {
+      id,
+      mealId: mealItemData.mealId,
+      foodItemId: mealItemData.foodItemId,
+      quantity: mealItemData.quantity,
+      calories,
+      protein,
+      carbs,
+      fat,
+      createdAt: new Date(),
+    };
+    
+    this.mealItems.set(id, mealItem);
+    
+    // Update the meal's total nutrition values
+    const meal = await this.getMealById(mealItemData.mealId);
+    if (meal) {
+      const mealItems = await this.getMealItems(meal.id);
+      
+      // Calculate total nutrition values
+      const totalCalories = mealItems.reduce((sum, item) => sum + item.calories, 0);
+      const totalProtein = parseFloat(mealItems.reduce((sum, item) => sum + item.protein, 0).toFixed(1));
+      const totalCarbs = parseFloat(mealItems.reduce((sum, item) => sum + item.carbs, 0).toFixed(1));
+      const totalFat = parseFloat(mealItems.reduce((sum, item) => sum + item.fat, 0).toFixed(1));
+      
+      // Update the meal with new nutrition totals
+      await this.updateMealNutrition(meal.id, {
+        totalCalories,
+        totalProtein,
+        totalCarbs,
+        totalFat
+      });
+    }
+    
+    return mealItem;
+  }
+
+  async deleteMealItem(id: number): Promise<void> {
+    const mealItem = this.mealItems.get(id);
+    
+    if (!mealItem) {
+      throw new Error("Meal item not found");
+    }
+    
+    // Remove the meal item
+    this.mealItems.delete(id);
+    
+    // Update the meal's total nutrition values
+    const meal = await this.getMealById(mealItem.mealId);
+    if (meal) {
+      const mealItems = await this.getMealItems(meal.id);
+      
+      // Calculate total nutrition values
+      const totalCalories = mealItems.reduce((sum, item) => sum + item.calories, 0);
+      const totalProtein = parseFloat(mealItems.reduce((sum, item) => sum + item.protein, 0).toFixed(1));
+      const totalCarbs = parseFloat(mealItems.reduce((sum, item) => sum + item.carbs, 0).toFixed(1));
+      const totalFat = parseFloat(mealItems.reduce((sum, item) => sum + item.fat, 0).toFixed(1));
+      
+      // Update the meal with new nutrition totals
+      await this.updateMealNutrition(meal.id, {
+        totalCalories,
+        totalProtein,
+        totalCarbs,
+        totalFat
+      });
+    }
   }
 }
 
