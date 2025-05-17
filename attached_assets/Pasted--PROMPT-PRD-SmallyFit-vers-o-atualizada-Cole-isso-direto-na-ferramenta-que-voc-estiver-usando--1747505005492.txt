@@ -1,0 +1,118 @@
+✅ PROMPT PRD — SmallyFit (versão atualizada)
+Cole isso direto na ferramenta que você estiver usando para gerar ou corrigir o código do projeto.
+
+🚀 Projeto: SmallyFit
+🎯 Objetivo: Corrigir e ativar as seções internas do app, garantindo que os componentes renderizem corretamente quando o usuário clica nas áreas da barra lateral. Habilitar o uso funcional de cada seção, com preenchimento, edição e interação com o conteúdo.
+
+🔧 FUNCIONALIDADES PRINCIPAIS A IMPLEMENTAR / CORRIGIR
+Sistema de navegação funcional:
+
+Corrigir a navegação do app para que, ao clicar nos itens da sidebar, as seções internas realmente funcionem.
+
+Exemplo: Quando clico em "Medidas", ele muda visualmente, mas os campos de preenchimento e ações dentro dessa tela não funcionam.
+
+Renderização por seção:
+
+Cada seção acessada deve renderizar seu conteúdo corretamente e permitir:
+
+Preencher dados
+
+Clicar em botões
+
+Salvar alterações
+
+Ver feedbacks visuais
+
+Tela de Dashboard (Home):
+
+Deve exibir o texto: Olá, [Nome da pessoa] dinamicamente com base no nome do usuário logado.
+
+Exibir dicas motivacionais curtas e frases inspiradoras.
+
+Mostrar um resumo do progresso da pessoa (se disponível).
+
+Habilitar modo escuro (dark mode):
+
+Implementar suporte total ao modo escuro no app.
+
+Garantir que as cores respeitem o tema escuro, especialmente nos componentes visuais e de texto.
+
+Sistema de Login (admin):
+
+Criar uma conta admin padrão com e-mail/senha para ter acesso completo às funcionalidades do app.
+
+Exemplo: admin@smallyfit.com / senhaadmin123
+(Você pode mudar depois)
+
+Proteção de dados e visibilidade:
+
+Garantir que cada usuário veja apenas seus próprios dados (medidas, metas, calorias, etc).
+
+Seções a ativar na sidebar:
+
+Dashboard
+
+Medidas
+
+IMC e Progresso
+
+Água
+
+Treinos
+
+Cardápio
+
+Conquistas
+
+Notificações
+
+Configurações
+
+Configurações básicas do usuário:
+
+Sistema para editar nome, e-mail, senha e preferências (como ativar/desativar notificações)
+
+Opção de "esqueci a senha" (mesmo que simulado para agora)
+
+📲 INTERFACE
+Interface 100% mobile-first (otimizada para celular)
+
+Cor principal: Verde (transmite saúde e confiança)
+
+Sidebar lateral acessível via botão de menu
+
+Design simples, funcional e agradável
+
+📦 DADOS DO PAGAMENTO (Kiwify)
+Integrar com este link de pagamento:
+
+arduino
+Copiar
+Editar
+https://pay.kiwify.com.br/Yc34ebd
+Observações:
+
+Primeiros 7 dias grátis (freemium)
+
+Após isso: R$29,90 no 1º mês, e R$49,90 nos seguintes
+
+🧠 DADOS A USAR NOS CÁLCULOS INTERNOS
+Medidas inseridas pelo usuário (peso, altura, abdômen, glúteos, braços)
+
+Cálculo de:
+
+IMC
+
+Meta de ingestão de água diária
+
+Consumo ideal de proteínas, carboidratos e gorduras por refeição
+
+Feedback dinâmico com base nas metas
+
+⚠️ Problema atual (do projeto enviado)
+O app muda de seção visualmente ao clicar na sidebar, mas os conteúdos dentro de cada tela não estão interativos — não é possível preencher dados, nem clicar em ações, nem ativar eventos esperados.
+
+✅ Instruções finais para o gerador
+Repare o sistema de navegação e renderização de telas baseado no projeto zip enviado, ativando corretamente a lógica de cada componente de seção. Cada item do menu precisa abrir a tela correta e permitir a interação completa com seus campos e funcionalidades.
+
+Ative o dark mode e implemente o dashboard inicial com nome do usuário. Configure corretamente o login de admin com acesso total. Garanta que os dados preenchidos possam ser salvos e que cada usuário veja apenas seus próprios dados.
