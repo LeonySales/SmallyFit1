@@ -174,9 +174,9 @@ export function MeasurementForm({ currentMeasurements, onSuccess }: {
         <Button
           type="submit"
           className="w-full"
-          disabled={saveMeasurementMutation.isPending}
+          disabled={isSubmitting}
         >
-          {saveMeasurementMutation.isPending ? (
+          {isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Salvando...
