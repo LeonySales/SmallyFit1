@@ -1,10 +1,19 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { MeasurementForm } from "@/components/measurements/measurement-form";
 import { Clock, History } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useAuth } from "@/hooks/use-auth";
+import { 
+  getMeasurements, 
+  saveMeasurements, 
+  isWithinFreeTrial, 
+  getUserSettings 
+} from "@/lib/localStorage";
+import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
 
 type Measurement = {
   id: number;

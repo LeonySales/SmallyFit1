@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -29,6 +29,11 @@ import { toast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
+import { 
+  getUserSettings,
+  saveUserSettings,
+  isWithinFreeTrial
+} from "@/lib/localStorage";
 
 const profileSchema = z.object({
   name: z.string().min(2, { message: "O nome deve ter no mínimo 2 caracteres" }),
@@ -51,7 +56,45 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const { theme, setTheme } = useTheme();
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [userGoal, setUserGoal] = useState<'emagrecer' | 'manter' | 'ganhar'>('manter');
+  const [isPremium, setIsPremium] = useState(false);
+  const [daysLeft, setDaysLeft] = useState(7);
   const queryClient = useQueryClient();
+  
+  // Carregar configurações salvas do usuário
+  useEffect(() => {
+    if (user?.id) {
+      const settings = getUserSettings(user.id);
+      
+      if (settings) {
+        setIsPremium(settings.isPremium);
+        
+        if (settings.goal) {
+          setUserGoal(settings.goal);
+        }
+        
+        // Calcular dias restantes do período de teste
+        if (settings.createdAt) {
+          const createdDate = new Date(settings.createdAt);
+          const now = new Date();
+          const diffTime = Math.abs(now.getTime() - createdDate.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const remaining = Math.max(0, 7 - diffDays);
+          setDaysLeft(remaining);
+        }
+      } else {
+        // Se não existir configuração, criar uma
+        const today = new Date().toISOString();
+        saveUserSettings(user.id, {
+          userId: user.id,
+          createdAt: today,
+          isPremium: false,
+          goal: 'manter'
+        });
+        setDaysLeft(7);
+      }
+    }
+  }, [user?.id]);
   
   // Profile form
   const profileForm = useForm<ProfileFormValues>({
@@ -317,6 +360,45 @@ export default function SettingsPage() {
           
           <div className="flex items-center justify-between">
             <div>
+              <p className="font-medium mb-0.5">Seu objetivo</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Define sua meta calórica diária</p>
+            </div>
+            <Select 
+              value={userGoal} 
+              onValueChange={(value) => {
+                if (user?.id) {
+                  const settings = getUserSettings(user.id) || {
+                    userId: user.id,
+                    createdAt: new Date().toISOString(),
+                    isPremium: isPremium
+                  };
+                  
+                  saveUserSettings(user.id, {
+                    ...settings,
+                    goal: value as 'emagrecer' | 'manter' | 'ganhar'
+                  });
+                  
+                  setUserGoal(value as 'emagrecer' | 'manter' | 'ganhar');
+                  
+                  toast({
+                    title: "Objetivo atualizado",
+                    description: "Sua meta calórica foi ajustada!"
+                  });
+                }
+              }}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Selecione" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="emagrecer">Emagrecer (1500 kcal)</SelectItem>
+                <SelectItem value="manter">Manter peso (2000 kcal)</SelectItem>
+                <SelectItem value="ganhar">Ganhar massa (2500 kcal)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div>
               <p className="font-medium mb-0.5">Unidades de medida</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">Escolha o sistema de medidas</p>
             </div>
@@ -335,29 +417,97 @@ export default function SettingsPage() {
             <p className="font-medium">Som de notificações</p>
             <Switch defaultChecked />
           </div>
+          
+          {/* Informações do plano */}
+          <div className="mt-6 pt-4 border-t">
+            <div className="flex justify-between items-center mb-2">
+              <div>
+                <p className="font-medium">Seu plano</p>
+                <p className="text-xs text-slate-500">
+                  {isPremium 
+                    ? "Premium (Acesso completo)" 
+                    : daysLeft > 0 
+                      ? `Gratuito (${daysLeft} dias restantes)` 
+                      : "Gratuito (Período encerrado)"}
+                </p>
+              </div>
+              <span className={`text-xs py-1 px-2 rounded-full 
+                ${isPremium 
+                  ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" 
+                  : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"}`}>
+                {isPremium ? "Premium" : "Gratuito"}
+              </span>
+            </div>
+            
+            {!isPremium && (
+              <p className="text-xs text-slate-500 mt-1 mb-3">
+                {daysLeft > 0 
+                  ? `Após o período gratuito, algumas funções serão limitadas.` 
+                  : `Algumas funções estão limitadas. Assine o Premium para acesso completo.`}
+              </p>
+            )}
+          </div>
         </div>
       </div>
       
-      {/* Subscription Info */}
+      {/* SmallyFit Premium */}
       <div className="bg-white dark:bg-slate-900 rounded-xl p-5 shadow-sm mb-6">
-        <h3 className="font-medium text-lg mb-4">Informações da conta</h3>
+        <h3 className="font-medium text-lg mb-4">SmallyFit Premium</h3>
         
-        <div className="p-3 bg-primary-50 dark:bg-primary-900/20 rounded-lg border border-primary-200 dark:border-primary-800 mb-4">
-          <div className="flex items-center justify-between mb-1">
-            <p className="font-medium">Plano Premium</p>
-            <span className="text-xs py-1 px-2 bg-primary-100 dark:bg-primary-900 text-primary dark:text-primary-400 rounded-full">Ativo</span>
+        <div className="p-4 bg-gradient-to-r from-indigo-100 to-purple-100 dark:from-indigo-900/40 dark:to-purple-900/40 rounded-lg border border-indigo-200 dark:border-indigo-800 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="font-bold text-lg">Desbloqueie todas as funções</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">Apenas R$49,90/mês</p>
+            </div>
+            <span className="text-xs py-1 px-2 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 rounded-full font-medium">
+              {isWithinFreeTrial(user?.id || 0) ? 'Grátis por mais ' + (7 - Math.floor((Date.now() - new Date(getUserSettings(user?.id || 0)?.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24))) + ' dias' : 'Período grátis encerrado'}
+            </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Renovação: 15/06/2023 • R$29,90/mês</p>
-          <div className="mt-2">
-            <a
-              href="https://pay.kiwify.com.br/Yc34ebd"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-primary dark:text-primary-400 font-medium"
-            >
-              Gerenciar assinatura
-            </a>
-          </div>
+          
+          <ul className="space-y-2 mt-3 mb-4">
+            <li className="flex items-start">
+              <svg className="h-5 w-5 text-green-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-sm">Acesso completo a todas as funções</span>
+            </li>
+            <li className="flex items-start">
+              <svg className="h-5 w-5 text-green-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-sm">Cardápio interativo e cálculo de calorias</span>
+            </li>
+            <li className="flex items-start">
+              <svg className="h-5 w-5 text-green-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-sm">Histórico de medidas e evolução</span>
+            </li>
+            <li className="flex items-start">
+              <svg className="h-5 w-5 text-green-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-sm">Treinos e desafios semanais</span>
+            </li>
+            <li className="flex items-start">
+              <svg className="h-5 w-5 text-green-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-sm">Conquistas e motivação diária</span>
+            </li>
+          </ul>
+          
+          <a
+            href="https://pay.kiwify.com.br/Yc34ebd"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full"
+          >
+            <Button className="w-full" size="lg">
+              Assinar Premium - R$49,90/mês
+            </Button>
+          </a>
         </div>
         
         <div className="mt-4">
