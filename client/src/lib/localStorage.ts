@@ -28,6 +28,18 @@ export interface MeasurementData {
   thighs?: number;
 }
 
+// Array de medições para histórico
+export type MeasurementHistoryData = Array<{
+  id: number;
+  userId: number;
+  weight: number;
+  height: number;
+  waist?: number;
+  hip?: number;
+  arms?: number;
+  createdAt: string;
+}>;
+
 export interface FoodIntakeData {
   userId: number;
   date: string;
@@ -104,12 +116,26 @@ export const getWaterIntake = (userId: number): WaterIntakeData | null => {
   return getData<WaterIntakeData>(storageKeys.waterIntake, userId);
 };
 
-export const saveMeasurements = (userId: number, data: MeasurementData): void => {
-  saveData<MeasurementData>(storageKeys.measurements, userId, data);
+export const saveMeasurements = (userId: number, data: MeasurementHistoryData): void => {
+  saveData<MeasurementHistoryData>(storageKeys.measurements, userId, data);
 };
 
-export const getMeasurements = (userId: number): MeasurementData | null => {
-  return getData<MeasurementData>(storageKeys.measurements, userId);
+export const getMeasurements = (userId: number): MeasurementHistoryData | null => {
+  return getData<MeasurementHistoryData>(storageKeys.measurements, userId);
+};
+
+// Adicionar uma única medição ao histórico
+export const addMeasurement = (userId: number, measurement: Omit<MeasurementData, 'userId' | 'date'>): void => {
+  const measurements = getMeasurements(userId) || [];
+  const newMeasurement = {
+    id: Date.now(),
+    userId: userId,
+    createdAt: new Date().toISOString(),
+    ...measurement
+  };
+  
+  measurements.unshift(newMeasurement);
+  saveMeasurements(userId, measurements);
 };
 
 export const saveFoodIntake = (userId: number, data: FoodIntakeData): void => {

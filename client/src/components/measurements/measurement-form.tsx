@@ -20,55 +20,57 @@ import { Loader2 } from "lucide-react";
 const measurementSchema = z.object({
   weight: z.coerce.number().positive({ message: "O peso deve ser positivo" }),
   height: z.coerce.number().positive({ message: "A altura deve ser positiva" }),
-  waist: z.coerce.number().positive({ message: "A medida da cintura deve ser positiva" }),
-  hip: z.coerce.number().positive({ message: "A medida do quadril deve ser positiva" }),
-  arms: z.coerce.number().positive({ message: "A medida dos braços deve ser positiva" }),
+  waist: z.coerce.number().positive({ message: "A medida da cintura deve ser positiva" }).optional(),
+  hip: z.coerce.number().positive({ message: "A medida do quadril deve ser positiva" }).optional(),
+  arms: z.coerce.number().positive({ message: "A medida dos braços deve ser positiva" }).optional(),
 });
 
 type MeasurementFormValues = z.infer<typeof measurementSchema>;
 
 export function MeasurementForm({ currentMeasurements, onSuccess }: { 
-  currentMeasurements?: MeasurementFormValues, 
-  onSuccess?: () => void 
+  currentMeasurements?: Partial<MeasurementFormValues>, 
+  onSuccess?: (data: MeasurementFormValues) => void 
 }) {
-  const queryClient = useQueryClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const form = useForm<MeasurementFormValues>({
     resolver: zodResolver(measurementSchema),
-    defaultValues: currentMeasurements || {
-      weight: 0,
-      height: 0,
-      waist: 0,
-      hip: 0,
-      arms: 0,
-    },
-  });
-
-  const saveMeasurementMutation = useMutation({
-    mutationFn: async (data: MeasurementFormValues) => {
-      const res = await apiRequest("POST", "/api/measurements", data);
-      return await res.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Medidas salvas",
-        description: "Suas medidas foram salvas com sucesso!",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/measurements"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/measurements/latest"] });
-      if (onSuccess) onSuccess();
-    },
-    onError: (error) => {
-      toast({
-        title: "Erro ao salvar",
-        description: error.message,
-        variant: "destructive",
-      });
+    defaultValues: {
+      weight: currentMeasurements?.weight || 0,
+      height: currentMeasurements?.height || 0,
+      waist: currentMeasurements?.waist || 0,
+      hip: currentMeasurements?.hip || 0,
+      arms: currentMeasurements?.arms || 0,
     },
   });
 
   function onSubmit(data: MeasurementFormValues) {
-    saveMeasurementMutation.mutate(data);
+    setIsSubmitting(true);
+    
+    try {
+      // Usando o callback para passar os dados para o componente pai
+      if (onSuccess) {
+        onSuccess(data);
+      }
+      
+      toast({
+        title: "Medidas salvas",
+        description: "Suas medidas foram salvas com sucesso!",
+      });
+      
+      // Resetar o formulário com os novos valores como padrão
+      form.reset({
+        ...data
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar suas medidas.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
