@@ -1,0 +1,53 @@
+Ajuste e evolua o projeto SmallyFit com as seguintes funcionalidades novas e correções de persistência:
+
+🔒 1. PERSONALIZAÇÃO E DADOS DO USUÁRIO:
+- Atualize o sistema para que todas as configurações feitas pelo usuário (peso, altura, objetivo, nome, email etc.) sejam armazenadas no localStorage com base no ID ou email do usuário.
+- Toda informação salva deve ser usada nas outras áreas do app (ex: cálculo do IMC, dicas personalizadas, sugestão de cardápio etc).
+- Ao voltar para o app, o usuário deve encontrar seus dados salvos automaticamente.
+
+🥗 2. MONTAR CARDÁPIO PERSONALIZADO:
+- Adicione um campo de busca onde o usuário digita um alimento e o app retorna sugestões como:
+  - Exemplo: digita "arroz" → mostrar "Arroz branco", "Arroz integral", "Arroz 7 grãos"
+- Permita que o usuário selecione e adicione ao cardápio do dia.
+- Cada alimento deve conter:
+  - Nome
+  - Calorias por porção
+  - Tipo de refeição (café da manhã, almoço, jantar, lanche)
+- Exibir a lista dos alimentos adicionados com a soma total de calorias do dia.
+
+🎯 3. SUGESTÃO DE META CALÓRICA:
+- No cadastro ou edição de perfil, o usuário escolherá um dos objetivos:
+  - Emagrecer
+  - Manter peso
+  - Ganhar massa
+- Com base nisso, gerar uma meta diária de calorias aproximada:
+  - Emagrecer: 1500 kcal
+  - Manter peso: 2000 kcal
+  - Ganhar massa: 2500 kcal
+- No cardápio, mostrar o texto:  
+  “Meta diária: XXXX kcal – Você consumiu até agora: YYYY kcal”
+- Exibir barra de progresso (pode ser visual ou texto simples).
+
+⛔ 4. LIMITE DE 7 DIAS PARA USO GRATUITO:
+- Implementar um contador baseado na data de criação da conta.
+- Após 7 dias, limitar as funcionalidades do app, deixando o usuário ver apenas o dashboard e configurações.
+- Ao tentar acessar outras seções, exibir alerta:  
+  “Seu período gratuito terminou. Torne-se Premium para continuar usando o SmallyFit.”
+
+💎 5. ÁREA DE UPGRADE PARA PREMIUM:
+- Em “Configurações”, adicionar seção **SmallyFit Premium** com:
+  - Botão: “Assinar Premium – R$49,90/mês”
+  - Link do checkout: `https://pay.kiwify.com.br/Yc34ebd`
+  - Texto com benefícios desbloqueados:
+    - Acesso completo a todas as funções
+    - Cardápio interativo e cálculo de calorias
+    - Histórico de medidas e evolução
+    - Treinos e desafios semanais
+    - Conquistas e motivação diária
+
+📦 6. EXTRAS:
+- Garanta que os dados adicionados (como alimentos consumidos, medidas, treinos feitos, água bebida etc.) continuem armazenados por usuário mesmo após login/logout.
+- Todos os dados devem ser carregados ao entrar novamente no app.
+
+🚀 Finalize a correção com tudo funcionando, otimizado para mobile, com foco em performance e praticidade.
+

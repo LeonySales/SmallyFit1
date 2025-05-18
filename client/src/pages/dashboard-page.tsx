@@ -4,11 +4,23 @@ import { MotivationalCard } from "@/components/dashboard/motivational-card";
 import { SummaryCard } from "@/components/dashboard/summary-card";
 import { ProgressChart } from "@/components/dashboard/progress-chart";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { 
+  getUserSettings, 
+  getWaterIntake, 
+  getMeasurements, 
+  saveUserSettings,
+  isWithinFreeTrial
+} from "@/lib/localStorage";
+import { calculateBMI as calculateBMIUtil, getBMICategory as getBMICategoryUtil } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const [trialActive, setTrialActive] = useState(true);
   
-  // Mock data for week progress chart
+  // Dados de progresso semanal
   const weekData = [
     { day: "Seg", value: 40 },
     { day: "Ter", value: 60 },
@@ -19,18 +31,56 @@ export default function DashboardPage() {
     { day: "Dom", value: 30 },
   ];
   
-  // Example query for user stats (in a real app, this would fetch from API)
   const { data: userStats } = useQuery({
-    queryKey: ["/api/user/stats"],
+    queryKey: ["/api/user/stats", user?.id],
     queryFn: () => {
-      // This would normally fetch from an API
+      if (!user?.id) return null;
+      
+      // Buscar dados do localStorage
+      const settings = getUserSettings(user.id);
+      const waterData = getWaterIntake(user.id);
+      const measurements = getMeasurements(user.id);
+      
+      // Se não existirem configurações, criar configurações iniciais
+      if (!settings) {
+        const today = new Date().toISOString();
+        saveUserSettings(user.id, {
+          userId: user.id,
+          createdAt: today,
+          isPremium: false
+        });
+      }
+      
+      // Calcular IMC se houver medições
+      let bmi = 0;
+      let bmiStatus = "Sem dados";
+      
+      if (measurements?.weight && measurements?.height) {
+        bmi = calculateBMIUtil(measurements.weight, measurements.height);
+        bmiStatus = getBMICategoryUtil(bmi);
+      }
+      
+      // Verificar período de teste
+      const isTrialActive = isWithinFreeTrial(user.id);
+      setTrialActive(isTrialActive);
+      
+      // Se não estiver no período de teste, mostrar alerta
+      if (!isTrialActive) {
+        toast({
+          title: "Período gratuito encerrado",
+          description: "Torne-se Premium para continuar usando todas as funcionalidades do SmallyFit.",
+          variant: "destructive"
+        });
+      }
+      
       return {
-        bmi: 24.5,
-        bmiStatus: "Peso saudável",
-        waterCurrent: 650,
-        waterGoal: 2000
+        bmi: bmi > 0 ? bmi.toFixed(1) : "--",
+        bmiStatus: bmi > 0 ? bmiStatus : "Sem dados",
+        waterCurrent: waterData?.amount || 0,
+        waterGoal: settings?.waterGoal || (measurements?.weight ? Math.round(measurements.weight * 35) : 2000)
       };
-    }
+    },
+    enabled: !!user?.id
   });
   
   const firstName = user?.name.split(" ")[0] || "Usuário";

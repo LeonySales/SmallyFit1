@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,17 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Utensils, Plus, Search, Coffee, UtensilsCrossed, Pizza, Apple, X, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { 
+  getFoodIntake, 
+  saveFoodIntake, 
+  getUserSettings, 
+  calculateCalorieGoal,
+  searchFoods,
+  commonFoods,
+  isWithinFreeTrial
+} from "@/lib/localStorage";
+import { Progress } from "@/components/ui/progress";
 
 // Definir os tipos para os modelos de dados
 interface FoodItem {
