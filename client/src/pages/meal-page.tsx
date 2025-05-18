@@ -517,6 +517,8 @@ const AddFoodToMealForm = ({ mealId, onSuccess }: { mealId: number, onSuccess: (
 
 // Componente principal para a página de refeições
 export default function MealPage() {
+  const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
@@ -525,6 +527,165 @@ export default function MealPage() {
   const [showAddToMealDialog, setShowAddToMealDialog] = useState<boolean>(false);
   const [selectedMealId, setSelectedMealId] = useState<number | null>(null);
   
+  // Estados para nova funcionalidade de busca de alimentos
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedFoods, setSelectedFoods] = useState<any[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [trialActive, setTrialActive] = useState(true);
+  const [userGoal, setUserGoal] = useState<'emagrecer' | 'manter' | 'ganhar'>('manter');
+  const [calorieGoal, setCalorieGoal] = useState(2000);
+  
+  // Verificar período de teste e carregar configurações do usuário
+  useEffect(() => {
+    if (user?.id) {
+      const isActive = isWithinFreeTrial(user.id);
+      setTrialActive(isActive);
+      
+      if (!isActive) {
+        toast({
+          title: "Período gratuito encerrado",
+          description: "Algumas funcionalidades estão limitadas. Torne-se Premium para acesso completo.",
+          variant: "destructive"
+        });
+      }
+      
+      // Carregar configurações do usuário
+      const settings = getUserSettings(user.id);
+      if (settings?.goal) {
+        setUserGoal(settings.goal);
+        setCalorieGoal(calculateCalorieGoal(settings.goal));
+      }
+    }
+  }, [user?.id, toast]);
+  
+  // Função para pesquisar alimentos
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.length >= 2) {
+      const results = searchFoods(query);
+      setSearchResults(results);
+      setShowSearchResults(true);
+    } else {
+      setSearchResults([]);
+      setShowSearchResults(false);
+    }
+  };
+  
+  // Adicionar alimento à lista de selecionados
+  const addFoodToSelected = (food: any) => {
+    if (!trialActive && selectedFoods.length >= 2) {
+      toast({
+        title: "Funcionalidade limitada",
+        description: "Torne-se Premium para adicionar mais alimentos ao cardápio",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const newFood = {...food, quantity: 1};
+    setSelectedFoods([...selectedFoods, newFood]);
+    setSearchQuery("");
+    setSearchResults([]);
+    setShowSearchResults(false);
+    
+    toast({
+      title: "Alimento adicionado",
+      description: `${food.name} foi adicionado ao seu cardápio`
+    });
+  };
+  
+  // Remover alimento da lista
+  const removeFoodFromSelected = (index: number) => {
+    const newFoods = [...selectedFoods];
+    newFoods.splice(index, 1);
+    setSelectedFoods(newFoods);
+  };
+  
+  // Atualizar quantidade de alimento
+  const updateFoodQuantity = (index: number, quantity: number) => {
+    if (!trialActive && quantity > 1) {
+      toast({
+        title: "Funcionalidade limitada",
+        description: "Torne-se Premium para aumentar as quantidades",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const newFoods = [...selectedFoods];
+    newFoods[index].quantity = quantity;
+    setSelectedFoods(newFoods);
+  };
+  
+  // Calcular total de calorias dos alimentos selecionados
+  const calculateTotalCalories = () => {
+    return selectedFoods.reduce((total, food) => {
+      return total + (food.calories * food.quantity);
+    }, 0);
+  };
+  
+  // Calcular % da meta diária
+  const calculatePercentage = () => {
+    const total = calculateTotalCalories();
+    return Math.min(Math.round((total / calorieGoal) * 100), 100);
+  };
+  
+  // Salvar dados no banco
+  const saveMealData = async () => {
+    if (!user?.id || selectedFoods.length === 0) return;
+    
+    try {
+      // Criar nova refeição
+      const mealData = {
+        name: "Refeição personalizada",
+        date: selectedDate,
+        totalCalories: calculateTotalCalories(),
+        totalProtein: selectedFoods.reduce((total, food) => total + ((food.protein || 0) * food.quantity), 0),
+        totalCarbs: selectedFoods.reduce((total, food) => total + ((food.carbs || 0) * food.quantity), 0),
+        totalFat: selectedFoods.reduce((total, food) => total + ((food.fat || 0) * food.quantity), 0),
+      };
+      
+      // Salvar refeição no banco
+      const mealRes = await apiRequest("POST", "/api/meals", mealData);
+      const savedMeal = await mealRes.json();
+      
+      // Adicionar itens à refeição
+      for (const food of selectedFoods) {
+        const mealItemData = {
+          mealId: savedMeal.id,
+          foodItemId: food.id,
+          quantity: food.quantity,
+          calories: food.calories * food.quantity,
+          protein: (food.protein || 0) * food.quantity,
+          carbs: (food.carbs || 0) * food.quantity,
+          fat: (food.fat || 0) * food.quantity,
+        };
+        
+        await apiRequest("POST", "/api/meals/" + savedMeal.id + "/items", mealItemData);
+      }
+      
+      // Invalidar cache de refeições
+      queryClient.invalidateQueries({ queryKey: ["/api/meals"] });
+      
+      toast({
+        title: "Refeição salva!",
+        description: "Sua refeição personalizada foi salva com sucesso"
+      });
+      
+      // Limpar alimentos selecionados
+      setSelectedFoods([]);
+      
+    } catch (error) {
+      toast({
+        title: "Erro ao salvar refeição",
+        description: "Ocorreu um erro ao salvar sua refeição",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  // Buscar refeições do banco de dados
   const { data: meals = [] } = useQuery<Meal[]>({
     queryKey: ["/api/meals", selectedDate],
     queryFn: async () => {
