@@ -15,77 +15,95 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 
+// Usando o tipo do histórico de medições do localStorage
+import { MeasurementHistoryData } from "@/lib/localStorage";
+
 type Measurement = {
   id: number;
   userId: number;
   weight: number;
   height: number;
-  waist: number;
-  hip: number;
-  arms: number;
+  waist?: number;
+  hip?: number;
+  arms?: number;
   createdAt: string;
 };
 
 export default function MeasurementsPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [showHistory, setShowHistory] = useState(false);
+  const [measurementList, setMeasurementList] = useState<Measurement[]>([]);
+  const [trialActive, setTrialActive] = useState(true);
   
-  // Fetch latest measurements
-  const { data: latestMeasurement, isLoading } = useQuery({
-    queryKey: ["/api/measurements/latest"],
-    queryFn: () => {
-      // This would normally fetch from an API
-      return {
-        id: 1,
-        userId: 1,
-        weight: 75.5,
-        height: 176,
-        waist: 82,
-        hip: 98,
-        arms: 36,
-        createdAt: new Date().toISOString(),
-      } as Measurement;
+  // Verificar período de teste e carregar medições do localStorage
+  useEffect(() => {
+    if (user?.id) {
+      // Verificar período de teste
+      const isActive = isWithinFreeTrial(user.id);
+      setTrialActive(isActive);
+      
+      if (!isActive) {
+        toast({
+          title: "Período gratuito encerrado",
+          description: "Algumas funcionalidades estão limitadas. Torne-se Premium para acesso completo.",
+          variant: "destructive"
+        });
+      }
+      
+      // Carregar medições do localStorage
+      const localMeasurements = getMeasurements(user.id);
+      if (localMeasurements && Array.isArray(localMeasurements)) {
+        // Ordenar por data (mais recente primeiro)
+        const sortedMeasurements = [...localMeasurements].sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        setMeasurementList(sortedMeasurements);
+      }
     }
-  });
+  }, [user?.id, toast]);
   
-  // Fetch measurement history
-  const { data: measurementHistory } = useQuery({
-    queryKey: ["/api/measurements/history"],
-    queryFn: () => {
-      // This would normally fetch from an API
-      return [
-        {
-          id: 1,
-          userId: 1,
-          weight: 75.5,
-          height: 176,
-          waist: 82,
-          hip: 98,
-          arms: 36,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 2,
-          userId: 1,
-          weight: 76.2,
-          height: 176,
-          waist: 83,
-          hip: 99,
-          arms: 36.5,
-          createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: 3,
-          userId: 1,
-          weight: 77.8,
-          height: 176,
-          waist: 84,
-          hip: 100,
-          arms: 37,
-          createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-      ] as Measurement[];
+  // Adicionar nova medição
+  const addMeasurement = (newMeasurement: Omit<Measurement, 'id' | 'userId' | 'createdAt'>) => {
+    if (!user?.id) return;
+    
+    // Verificar limitação do período gratuito
+    if (!trialActive && measurementList.length >= 3) {
+      toast({
+        title: "Funcionalidade limitada",
+        description: "Torne-se Premium para registrar mais medições",
+        variant: "destructive"
+      });
+      return;
     }
-  });
+    
+    // Criar nova medição
+    const measurement: Measurement = {
+      id: Date.now(),
+      userId: user.id,
+      ...newMeasurement,
+      createdAt: new Date().toISOString()
+    };
+    
+    // Atualizar lista local
+    const updatedList = [measurement, ...measurementList];
+    setMeasurementList(updatedList);
+    
+    // Salvar no localStorage usando nossa função helper
+    saveMeasurements(user.id, updatedList);
+    
+    toast({
+      title: "Medidas salvas",
+      description: "Suas medidas foram atualizadas com sucesso!"
+    });
+  };
+  
+  // Obter última medição (a mais recente)
+  const latestMeasurement = measurementList.length > 0 ? measurementList[0] : null;
+  const isLoading = false;
+  
+  // Histórico de medições (limitado no período gratuito)
+  const measurementHistory = trialActive ? measurementList : measurementList.slice(0, 3);
   
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -192,11 +210,64 @@ export default function MeasurementsPage() {
       {/* Add New Measurements */}
       <div className="bg-white dark:bg-slate-900 rounded-xl p-5 shadow-sm">
         <h3 className="font-medium text-lg mb-4">Atualizar medidas</h3>
-        <MeasurementForm 
-          currentMeasurements={latestMeasurement} 
-          onSuccess={() => setShowHistory(false)}
-        />
+        
+        {!trialActive && measurementList.length >= 3 ? (
+          <div className="p-4 border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+            <h4 className="font-bold text-amber-800 dark:text-amber-400 mb-2">Funcionalidade limitada</h4>
+            <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
+              Você atingiu o limite de 3 registros de medidas no plano gratuito.
+            </p>
+            <a
+              href="https://pay.kiwify.com.br/Yc34ebd"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full"
+            >
+              <Button className="w-full" variant="default">
+                Assinar Premium - R$49,90/mês
+              </Button>
+            </a>
+          </div>
+        ) : (
+          <MeasurementForm 
+            currentMeasurements={latestMeasurement} 
+            onSuccess={(data) => {
+              addMeasurement({
+                weight: parseFloat(data.weight),
+                height: parseFloat(data.height),
+                waist: parseFloat(data.waist || '0'),
+                hip: parseFloat(data.hip || '0'),
+                arms: parseFloat(data.arms || '0'),
+              });
+              setShowHistory(true);
+            }}
+          />
+        )}
       </div>
+      
+      {/* Premium Banner - Mostrado apenas para usuários no plano gratuito */}
+      {!trialActive && (
+        <Card className="mt-6 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border-0 overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center text-center">
+              <h3 className="text-lg font-bold mb-2">Desbloqueie todas as funcionalidades</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+                Registre medidas ilimitadas e tenha acesso a recursos avançados de acompanhamento
+              </p>
+              <a
+                href="https://pay.kiwify.com.br/Yc34ebd"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full"
+              >
+                <Button className="w-full" size="sm">
+                  Assinar Premium - R$49,90/mês
+                </Button>
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
